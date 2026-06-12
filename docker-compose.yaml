@@ -1,0 +1,32 @@
+# 数据库：miaosha.sql 已导入 miaosha 库（数据持久化在 ./mysql_data）
+# 新克隆项目若 mysql_data 为空，需执行：docker exec -i seckill-mysql mysql -uroot -proot < miaosha.sql
+services:
+  # 1. MySQL：用于最终订单落地和数据持久化
+  mysql:
+    image: mysql:8.0
+    container_name: seckill-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+
+  # 2. Redis：用于库存预扣减、分布式锁、热点数据缓存（秒杀核心）
+  redis:
+    image: redis:7.0
+    container_name: seckill-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass 123456
+
+  # 3. RabbitMQ：用于秒杀请求排队、异步下单削峰
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: seckill-rabbitmq
+    ports:
+      - "5672:5672"   # 客户端连接端口
+      - "15672:15672" # Web管理界面端口
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin

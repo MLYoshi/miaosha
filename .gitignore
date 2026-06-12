@@ -1,0 +1,41 @@
+### Maven ###
+target/
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.class
+
+### JMeter ###
+jmeter/report/
+jmeter/*.jtl
+jmeter/*.csv
+jmeter.log
+
+### MySQL ###
+mysql_data/
+
+### IDE ###
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+.settings/
+.project
+.classpath
+.factorypath
+
+### macOS ###
+.DS_Store
+*.DS_Store
+
+### Logs ###
+*.log
+logs/
+
+### Graphify ###
+graphify-out/
+
+### Others ###
+*.tmp
+*.swp
+*~

@@ -1,0 +1,36 @@
+---
+description: Superpowers workflow — skills before code, design before build, verify before done
+alwaysApply: true
+---
+
+# Superpowers Workflow
+
+## Skill-first
+
+Before exploration or implementation, check installed Superpowers skills. If one might apply, read it and follow it — do not skip because the task feels small.
+
+## Creative work
+
+For new features, components, or behavior changes:
+
+1. `brainstorming` — explore context, ask questions, propose approaches, get design approval
+2. Write spec to `docs/superpowers/specs/`
+3. `writing-plans` — only after design is approved
+4. Implement; prefer `test-driven-development` for logic
+
+## Bugs
+
+Use `systematic-debugging`: reproduce → hypothesize → test → fix. No fix without evidence.
+
+## Completion
+
+Use `verification-before-completion`: run relevant tests/commands and cite output before saying work is done.
+
+## Example
+
+```
+User: "Add a login API"
+
+❌ Jump straight to routes and JWT
+✅ brainstorming → spec → writing-plans → TDD → verify tests pass
+```
