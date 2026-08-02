@@ -40,6 +40,7 @@ public class MiaoshaService {
     if (goods == null) {
       throw new MiaoshaException(CodeMsg.GOODS_NOT_EXIST);
     }
+    checkTimeWindow(goods);
 
     MiaoshaOrder existing = miaoshaOrderMapper.getByUserIdAndGoodsId(userId, goodsId);
     if (existing != null) {
@@ -65,6 +66,56 @@ public class MiaoshaService {
     miaoshaOrderMapper.insert(miaoshaOrder);
 
     return orderInfo;
+  }
+
+  /**
+   * Redis 预扣成功后的数据库落库事务。
+   *
+   * <p>不依赖 Redis，DB 条件扣库存（{@code stock_count > 0}）+ 唯一键作为最终防线：
+   * <ul>
+   *   <li>防超卖：{@link MiaoshaGoodsMapper#reduceStock} 条件更新</li>
+   *   <li>防重复：{@code miaosha_order} 唯一键 {@code u_uid_gid} 兜底</li>
+   * </ul>
+   */
+  @Transactional
+  public OrderInfo createOrder(Long userId, Long goodsId) {
+    GoodsVo goods = goodsService.getGoodsVo(goodsId);
+    if (goods == null) {
+      throw new MiaoshaException(CodeMsg.GOODS_NOT_EXIST);
+    }
+    checkTimeWindow(goods);
+
+    MiaoshaOrder existing = miaoshaOrderMapper.getByUserIdAndGoodsId(userId, goodsId);
+    if (existing != null) {
+      throw new MiaoshaException(CodeMsg.MIAOSHA_REPEAT);
+    }
+
+    int rows = miaoshaGoodsMapper.reduceStock(goodsId);
+    if (rows <= 0) {
+      throw new MiaoshaException(CodeMsg.MIAOSHA_STOCK_EMPTY);
+    }
+
+    OrderInfo orderInfo = buildOrderInfo(userId, goods);
+    orderInfoMapper.insert(orderInfo);
+
+    MiaoshaOrder miaoshaOrder = new MiaoshaOrder();
+    miaoshaOrder.setUserId(userId);
+    miaoshaOrder.setOrderId(orderInfo.getId());
+    miaoshaOrder.setGoodsId(goodsId);
+    miaoshaOrderMapper.insert(miaoshaOrder);
+
+    return orderInfo;
+  }
+
+  /** 校验秒杀时间窗口：now 必须落在 [startDate, endDate] 区间内。 */
+  private void checkTimeWindow(GoodsVo goods) {
+    LocalDateTime now = LocalDateTime.now();
+    if (goods.getStartDate() != null && now.isBefore(goods.getStartDate())) {
+      throw new MiaoshaException(CodeMsg.MIAOSHA_NOT_START);
+    }
+    if (goods.getEndDate() != null && now.isAfter(goods.getEndDate())) {
+      throw new MiaoshaException(CodeMsg.MIAOSHA_OVER);
+    }
   }
 
   private OrderInfo buildOrderInfo(Long userId, GoodsVo goods) {

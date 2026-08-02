@@ -6,8 +6,11 @@ target/
 
 ### JMeter ###
 jmeter/report/
+jmeter/history/
 jmeter/*.jtl
 jmeter/*.csv
+# benchmarks.csv 是进 Git 的对比表，必须保留
+!jmeter/benchmarks.csv
 jmeter.log
 
 ### MySQL ###

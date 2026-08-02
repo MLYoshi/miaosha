@@ -6,6 +6,8 @@ public enum CodeMsg {
   SERVER_ERROR(500100, "服务端异常"),
   GOODS_NOT_EXIST(500104, "商品不存在"),
   MIAOSHA_STOCK_EMPTY(500214, "库存不足"),
+  MIAOSHA_NOT_START(500215, "秒杀未开始"),
+  MIAOSHA_OVER(500216, "秒杀已结束"),
   MIAOSHA_REPEAT(500212, "不能重复秒杀"),
   MOBILE_NOT_EXIST(500501, "手机号不存在"),
   PASSWORD_ERROR(500502, "密码错误");
