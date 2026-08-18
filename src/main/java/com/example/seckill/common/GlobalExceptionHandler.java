@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -45,6 +46,17 @@ public class GlobalExceptionHandler {
         CodeMsg codeMsg = ex.getCodeMsg();
         log.info("业务异常: code={}, msg={}", codeMsg.getCode(), codeMsg.getMsg());
         return Result.error(codeMsg.getCode(), codeMsg.getMsg());
+    }
+
+    /**
+     * HTTP 方法不匹配（如对 POST-only 写接口发 GET）：保留 405 协议状态码。
+     * 协议层错误不降级为 HTTP 200 + 业务错误体，避免写操作契约被兜底异常掩盖。
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Result<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        log.warn("HTTP 方法不支持: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(Result.error(HttpStatus.METHOD_NOT_ALLOWED.value(), "HTTP 方法不允许"));
     }
 
     /**

@@ -130,4 +130,14 @@ class MiaoshaApiTest extends AbstractIntegrationTest {
     assertThat(redisStock(goodsId)).isEqualTo(5);
     assertThat(dbStock(goodsId)).isEqualTo(5);
   }
+
+  @Test // 契约：do_miaosha 是写操作，仅接受 POST，GET 一律 405
+  void doMiaosha_rejectsGet() {
+    long user = insertUser(13000000106L);
+    insertGoods("iphoneX", 9);
+
+    assertThat(get("/miaosha/do_miaosha?goodsId=1", user).getStatusCode().value())
+        .as("GET do_miaosha 应返回 405")
+        .isEqualTo(405);
+  }
 }

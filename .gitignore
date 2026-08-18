@@ -38,6 +38,9 @@ logs/
 ### Graphify ###
 graphify-out/
 
+### Scratch ###
+.scratch/
+
 ### Others ###
 *.tmp
 *.swp

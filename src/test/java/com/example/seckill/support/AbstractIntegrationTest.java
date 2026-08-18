@@ -99,6 +99,15 @@ public abstract class AbstractIntegrationTest {
     return rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), String.class);
   }
 
+  /** 带鉴权的 POST（写操作契约：do_miaosha / 预热均为 POST）。 */
+  protected ResponseEntity<String> post(String path, Long userId) {
+    HttpHeaders headers = new HttpHeaders();
+    if (userId != null) {
+      headers.setBearerAuth(JwtUtil.generateToken(userId));
+    }
+    return rest.exchange(path, HttpMethod.POST, new HttpEntity<>(headers), String.class);
+  }
+
   protected ResponseEntity<String> postJson(String path, String json) {
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);
@@ -161,12 +170,12 @@ public abstract class AbstractIntegrationTest {
   }
 
   protected void preheat(long goodsId, long operatorUserId) {
-    ResponseEntity<String> resp = get("/miaosha/preheat?goodsId=" + goodsId, operatorUserId);
+    ResponseEntity<String> resp = post("/admin/preheat?goodsId=" + goodsId, operatorUserId);
     assertThat(body(resp).get("code").asInt()).as("预热失败: %s", resp.getBody()).isEqualTo(0);
   }
 
   protected JsonNode doMiaosha(long userId, long goodsId) {
-    return body(get("/miaosha/do_miaosha?goodsId=" + goodsId, userId));
+    return body(post("/miaosha/do_miaosha?goodsId=" + goodsId, userId));
   }
 
   // ---------- 对账断言辅助 ----------

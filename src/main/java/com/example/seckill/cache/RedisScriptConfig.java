@@ -8,7 +8,7 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.scripting.support.ResourceScriptSource;
 
 /**
- * 加载 classpath:scripts 下的 Lua 脚本，供 {@link MiaoshaRedisService} 原子执行。
+ * 加载 classpath:scripts 下的 Lua 脚本，供 {@link RedisMiaoshaStore} 原子执行。
  */
 @Configuration
 public class RedisScriptConfig {
