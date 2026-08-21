@@ -11,15 +11,15 @@ import org.springframework.stereotype.Service;
 /**
  * 消费者落库编排：把一条下单请求消息变成数据库订单，并回写 Redis 结果。
  *
- * <p>编排语义（票 03）：
+ * <p>编排语义（票 03 + 票 04）：
  * <ul>
+ *   <li>幂等快跳（票 04）：消费前查结果标记，已 {@code SUCCESS} 的重复投递直接返回，
+ *       不再触碰 DB——DB 唯一键仍是结果标记丢失时的最终兜底
  *   <li>落库成功 → {@code markSuccess}，轮询接口可查到订单号
  *   <li>业务失败（{@link MiaoshaException}，如 DB 已有记录、时间窗外）→
  *       {@code compensate}（库存回补、标记清除、result=FAILED）后正常返回，
  *       listener ack——不重试业务失败
- *   <li>迟到的重复消息（受理侧发送失败降级同步落库后消息又送达）：DB 唯一键拦下，
- *       但 result 已是 SUCCESS——跳过补偿，避免覆盖成功结果与错误回补库存
- *   <li>意外异常上抛，listener 不 ack（票 04 加固重试与死信）
+ *   <li>意外异常上抛，listener 不 ack，由容器错误处理重试并终入死信（票 04）
  * </ul>
  *
  * <p>不依赖 Kafka，可经内存假 Redis + mock 下单事务直测。
@@ -39,10 +39,17 @@ public class OrderFulfillmentService {
     this.store = store;
   }
 
-  /** 消费一条下单请求消息：落库 + 回写 / 补偿，业务失败正常返回，意外异常上抛。 */
+  /** 消费一条下单请求消息：幂等快跳 + 落库 + 回写 / 补偿，业务失败正常返回，意外异常上抛。 */
   public void fulfill(SeckillOrderMessage message) {
     Long userId = message.getUserId();
     Long goodsId = message.getGoodsId();
+    if (alreadySucceeded(goodsId, userId)) {
+      // 幂等快跳（票 04）：重复投递且已有成功结果 → 直接视为处理完成；
+      // 结果标记丢失的重复仍由 DB 唯一键兜底（业务失败补偿路径）
+      log.info("重复投递快跳：已有成功结果 goodsId={} userId={} requestId={}", goodsId, userId,
+          message.getRequestId());
+      return;
+    }
     try {
       OrderInfo order = miaoshaService.createOrder(userId, goodsId);
       store.markSuccess(goodsId, userId, order.getId());

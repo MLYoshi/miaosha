@@ -2,7 +2,10 @@ package com.example.seckill.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.seckill.cache.InMemoryMiaoshaRedisStore;
@@ -90,6 +93,23 @@ class OrderFulfillmentServiceTest {
     assertThat(store.stock(GOODS)).as("迟到重复消息不应回补库存").isEqualTo(4);
     assertThat(store.userMark(GOODS, USER)).as("标记保持").isEqualTo(REQUEST_ID);
     assertThat(store.result(GOODS, USER)).as("成功结果不应被覆盖").isEqualTo("SUCCESS:7");
+  }
+
+  @Test // 重复投递（票 04）：结果标记已 SUCCESS → 幂等快跳，不再触碰 DB；
+        // 结果标记丢失的重复仍由 DB 唯一键兜底（见 businessFailure_compensates）
+  void duplicateDelivery_alreadySucceeded_fastSkips() {
+    seedPreDeducted(4);
+    // 模拟首次投递已落库成功并回写结果
+    store.markSuccess(GOODS, USER, 7L);
+    when(miaoshaService.createOrder(USER, GOODS))
+        .thenThrow(new MiaoshaException(CodeMsg.MIAOSHA_REPEAT));
+
+    fulfillment.fulfill(message()); // 同一条消息重复投递
+
+    verify(miaoshaService, never()).createOrder(anyLong(), anyLong());
+    assertThat(store.stock(GOODS)).as("快跳不得回补库存").isEqualTo(4);
+    assertThat(store.userMark(GOODS, USER)).as("标记保持").isEqualTo(REQUEST_ID);
+    assertThat(store.result(GOODS, USER)).as("成功结果不得被覆盖").isEqualTo("SUCCESS:7");
   }
 
   @Test // 意外异常（非业务失败）→ 上抛，listener 不 ack（票 04 加固重试与死信）

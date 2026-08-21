@@ -12,10 +12,11 @@ import org.springframework.stereotype.Component;
  * 下单请求消息消费者：订阅 {@code seckill-order} topic，手动 ack，落库编排见
  * {@link OrderFulfillmentService}。
  *
- * <p>ack 语义（票 03）：
+ * <p>ack 语义（票 03 + 票 04）：
  * <ul>
- *   <li>编排正常返回（落库成功 / 业务失败已补偿 / 迟到重复消息已跳过）→ ack
- *   <li>意外异常上抛、不 ack，由容器错误处理（票 04 加固重试与死信）
+ *   <li>编排正常返回（落库成功 / 业务失败已补偿 / 已成功的重复投递快跳）→ ack
+ *   <li>意外异常上抛、不 ack，由容器错误处理（{@link KafkaConfig#kafkaErrorHandler}）
+ *       指数退避重试，耗尽后进死信 topic，位点继续推进
  * </ul>
  */
 @Component

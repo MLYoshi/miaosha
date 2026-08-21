@@ -90,8 +90,8 @@
 | `goods_id` | bigint(20) | 关联 `goods.id` |
 | `UNIQUE KEY` | `u_uid_gid (user_id, goods_id)` | **同一用户对同一商品只能秒杀一次** |
 
-> 用途：幂等性保证。下单前先 `INSERT` 此表，依赖唯一键冲突阻止重复秒杀。  
-> 这是整个系统**防止超卖/重复下单**的核心机制。
+> 用途：幂等性保证。落库时 `INSERT` 此表，依赖唯一键 `(user_id, goods_id)` 冲突阻止重复秒杀。  
+> 这是整个系统**防止超卖/重复下单**的核心机制（配合 DB 条件扣库存）。
 
 ### 3.4 `miaosha_user` — 秒杀业务用户表
 
@@ -195,19 +195,34 @@
 4. 服务端做 `MD5(前端哈希 + 用户salt)`，与库中 `password` 比对
 5. 登录成功写 session/Cookie，更新 `last_login_date` 和 `login_count`
 
-### 5.2 秒杀下单
+### 5.2 秒杀下单（异步主链路）
+
+主链路已从「同步落库返回订单」改为「Redis 预扣 → Kafka → 消费者落库 → 前端轮询拿单」的削峰模型，DB 写入被移出请求路径：
+
 ```
-1. 校验登录态 + 校验时间窗口（now ∈ [start_date, end_date]）
-2. 校验库存 stock_count > 0
-3.【关键】INSERT INTO miaosha_order (user_id, order_id=0, goods_id)
-   - 依赖 UNIQUE (user_id, goods_id) 防重复
-4. INSERT INTO order_info（拿到 order_id）
-5. UPDATE miaosha_order SET order_id = ? WHERE id = ?
-6. UPDATE miaosha_goods SET stock_count = stock_count - 1 WHERE id = ? AND stock_count > 0
-7. 返回订单详情
+1. 受理（MiaoshaAcceptService）：Redis Lua 原子预扣
+   - 重复检查（user 标记存在 → 拒绝）→ 库存检查（stock ≤ 0 → 拒绝）→ 扣减并标记 PROCESSING
+2. 发 Kafka `seckill-order`：消息体 {userId, goodsId, requestId}，key 随机打散
+3. 立即返回受理中（PROCESSING），响应不含订单详情
+4. 消费者落库（OrderFulfillmentService → MiaoshaService.createOrder，见下方 DB 事务）
+   - 成功 → 回写 result = SUCCESS:{orderId}
+   - 业务失败 → 补偿：回补库存、清标记、result = FAILED
+5. 前端轮询 GET /miaosha/result 拿单（PROCESSING / SUCCESS:{orderId} / FAILED / 无记录 四态）
 ```
 
-实际生产会用 Redis 预减库存 + Kafka 异步下单，但**数据库层兜底就是这套约束**。
+**数据库落库事务（`MiaoshaService.createOrder`，异步消费与降级直连共用）**——DB 层最终防线：
+
+```
+1. 校验商品存在 + 时间窗口（now ∈ [start_date, end_date]）
+2. 查重：SELECT miaosha_order WHERE (user_id, goods_id) → 命中抛「重复下单」
+3.【关键】条件扣库存：UPDATE miaosha_goods SET stock_count = stock_count - 1
+   WHERE goods_id = ? AND stock_count > 0    （影响行数 = 0 → 抛「库存不足」）
+4. INSERT order_info（拿到自增 order_id）
+5. INSERT miaosha_order（直接带 order_id，UNIQUE (user_id, goods_id) 防重复兜底）
+```
+
+> 降级路径：Redis 不可用或 Kafka 发送失败时，受理方直接调用 `MiaoshaService.createOrder` 同步落库，用户仍拿到订单。  
+> 消息层可靠性（发送失败降级 / 业务失败补偿 / 意外异常重试+死信 / 幂等兜底）详见 `docs/mq-design.md`。
 
 ### 5.3 商品列表 / 详情
 - 列表：`goods` JOIN `miaosha_goods`（LEFT JOIN，因为非所有商品都有秒杀）
@@ -220,7 +235,7 @@
 1. **不要用 `user` 表**，登录一律走 `miaosha_user`。
 2. **`miaosha_user.id` 是手机号字符串/数字**，不是自增主键。
 3. **秒杀时间种子数据是 2017 年**，新部署后必须 UPDATE `miaosha_goods` 的 `start_date` / `end_date` 到当前可执行时间，否则接口会因时间校验失败返回错误。
-4. **`miaosha_order` 的 `order_id` 在 INSERT 时是 0**，要在 `order_info` 生成后回填——这意味着不能用一个 SQL 完成，需要事务。
+4. **`miaosha_order.order_id` 指向 `order_info.id`**：落库顺序是先 `INSERT order_info`（拿自增 id）再 `INSERT miaosha_order`（直接带 `order_id`），两步在同一事务内完成（`MiaoshaService.createOrder`）。
 5. **库存扣减必须带 `WHERE stock_count > 0`**（乐观锁/条件更新），否则在并发下会超卖。
 6. **`miaosha_order` 唯一键 `(user_id, goods_id)` 是去重最后一道防线**——并发下也靠它兜底。事务里如果先 `SELECT` 再判断再插入会有并发漏洞，**直接 `INSERT` 捕获唯一键异常**更安全。
 7. **`order_info.goods_name` 和 `goods_price` 是冗余字段**，下单时要从 `goods` / `miaosha_goods` 取当时的值快照保存，不要存实时联表查询的值（商品改价后老订单不应变化）。

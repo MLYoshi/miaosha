@@ -60,7 +60,10 @@ public abstract class AbstractIntegrationTest {
   static final MySQLContainer<?> MYSQL =
       new MySQLContainer<>(DockerImageName.parse("mysql:8.0"))
           .withDatabaseName("miaosha")
-          .withInitScript("schema.sql");
+          .withInitScript("schema.sql")
+          // binlog 默认开启，测试用户无 SUPER 权限无法建触发器；放开信任后
+          // 消费侧可靠性测试可用 DB 触发器注入意外异常（见 MiaoshaConsumerReliabilityTest）
+          .withConfigurationOverride("mysql-conf-docker");
 
   @ServiceConnection(name = "redis")
   static final GenericContainer<?> REDIS =
@@ -74,6 +77,11 @@ public abstract class AbstractIntegrationTest {
     MYSQL.start();
     REDIS.start();
     KAFKA.start();
+  }
+
+  /** 测试内直连 broker 的地址（@ServiceConnection 不覆盖属性值，@Value 读到的是 yaml 默认值）。 */
+  protected static String kafkaBootstrapServers() {
+    return KAFKA.getBootstrapServers();
   }
 
   @Autowired protected TestRestTemplate rest;
