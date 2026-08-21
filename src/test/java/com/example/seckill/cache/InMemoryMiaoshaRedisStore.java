@@ -69,6 +69,11 @@ public class InMemoryMiaoshaRedisStore implements MiaoshaRedisStore {
     data.put(RedisKeyBuilder.stock(goodsId), String.valueOf(stock));
   }
 
+  @Override
+  public String getResult(Long goodsId, Long userId) {
+    return data.get(RedisKeyBuilder.result(goodsId, userId));
+  }
+
   // ---------- 状态观测（断言用） ----------
 
   /** 当前库存；未写入（未预热）返回 -1。 */

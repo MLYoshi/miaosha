@@ -3,6 +3,7 @@ package com.example.seckill;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.seckill.support.AbstractIntegrationTest;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -14,11 +15,13 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 /**
- * C1-C5：并发正确性。所有用例共享同一套对账不变式：
- * 成功数 == 库存扣减数 == order_info 行数 == miaosha_order 行数，
- * 无重复 (user_id, goods_id)，且 Redis 库存 == DB 库存。
+ * C1-C5：并发正确性（票 03 受理异步化口径：CODE_SUCCESS = 受理成功，即预扣 + 消息入队）。
+ * 齐射后等待消费完成，对账不变式不变：成功受理数 == 库存扣减数 == order_info 行数 ==
+ * miaosha_order 行数，无重复 (user_id, goods_id)，且 Redis 库存 == DB 库存。
  */
 class MiaoshaConcurrencyTest extends AbstractIntegrationTest {
+
+  private static final Duration CONSUME_TIMEOUT = Duration.ofSeconds(60);
 
   /** 齐射：所有线程在同一个 CyclicBarrier 后同时调用秒杀，返回每个请求的业务 code。 */
   private List<Integer> volley(List<Long> userIds, long goodsId) {
@@ -72,6 +75,7 @@ class MiaoshaConcurrencyTest extends AbstractIntegrationTest {
     List<Integer> codes = volley(users, goodsId);
 
     assertThat(codes.stream().filter(c -> c == CODE_SUCCESS).count()).isEqualTo(10);
+    awaitOrderCount(10, CONSUME_TIMEOUT);
     assertLedger(goodsId, 10, 10);
   }
 
@@ -84,6 +88,7 @@ class MiaoshaConcurrencyTest extends AbstractIntegrationTest {
     List<Integer> codes = volley(Collections.nCopies(20, user), goodsId);
 
     assertThat(codes.stream().filter(c -> c == CODE_SUCCESS).count()).isEqualTo(1);
+    awaitOrderCount(1, CONSUME_TIMEOUT);
     assertLedger(goodsId, 9, 1);
   }
 
@@ -96,6 +101,7 @@ class MiaoshaConcurrencyTest extends AbstractIntegrationTest {
     List<Integer> codes = volley(users, goodsId);
 
     assertThat(codes.stream().filter(c -> c == CODE_SUCCESS).count()).isEqualTo(1);
+    awaitOrderCount(1, CONSUME_TIMEOUT);
     assertLedger(goodsId, 1, 1);
   }
 
@@ -107,6 +113,7 @@ class MiaoshaConcurrencyTest extends AbstractIntegrationTest {
 
     List<Integer> first = volley(users, goodsId);
     assertThat(first).allMatch(c -> c == CODE_SUCCESS);
+    awaitOrderCount(10, CONSUME_TIMEOUT);
 
     List<Integer> second = volley(users, goodsId);
     assertThat(second).allMatch(c -> c == CODE_MIAOSHA_REPEAT);
@@ -122,6 +129,7 @@ class MiaoshaConcurrencyTest extends AbstractIntegrationTest {
     List<Integer> codes = volley(users, goodsId);
 
     assertThat(codes.stream().filter(c -> c == CODE_SUCCESS).count()).isEqualTo(5);
+    awaitOrderCount(5, CONSUME_TIMEOUT);
     assertLedger(goodsId, 5, 5);
   }
 }

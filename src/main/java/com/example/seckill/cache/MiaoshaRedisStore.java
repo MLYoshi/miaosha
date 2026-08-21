@@ -11,7 +11,7 @@ import java.time.Duration;
  *
  * <p>异常契约：
  * <ul>
- *   <li>{@link #tryMiaosha} 连接类异常向上抛，由受理模块决定是否降级</li>
+ *   <li>{@link #tryMiaosha} / {@link #getResult} 连接类异常向上抛，由调用方决定如何处理</li>
  *   <li>{@link #markSuccess} / {@link #compensate} 不得向调用方抛异常——
  *       回写失败不能破坏已完成的数据库事实</li>
  * </ul>
@@ -43,4 +43,12 @@ public interface MiaoshaRedisStore {
 
   /** 写入秒杀库存（预热用，带过期时间）。 */
   void setStock(Long goodsId, int stock, Duration ttl);
+
+  /**
+   * 读取用户秒杀结果（轮询用）。
+   *
+   * @return 原始结果值 {@code PROCESSING} / {@code SUCCESS:{orderId}} / {@code FAILED}；
+   *         无记录（未参与 / 已过期）返回 {@code null}
+   */
+  String getResult(Long goodsId, Long userId);
 }

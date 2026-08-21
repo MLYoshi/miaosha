@@ -90,4 +90,9 @@ public class RedisMiaoshaStore implements MiaoshaRedisStore {
         .opsForValue()
         .set(RedisKeyBuilder.stock(goodsId), String.valueOf(stock), ttl);
   }
+
+  @Override
+  public String getResult(Long goodsId, Long userId) {
+    return redisTemplate.opsForValue().get(RedisKeyBuilder.result(goodsId, userId));
+  }
 }

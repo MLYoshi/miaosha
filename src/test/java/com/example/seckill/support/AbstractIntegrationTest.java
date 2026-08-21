@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
+import java.time.Duration;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -28,15 +29,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * 集成测试基座：Testcontainers 单例 MySQL 8 + Redis 7，真实 HTTP（RANDOM_PORT）。
+ * 集成测试基座：Testcontainers 单例 MySQL 8 + Redis 7 + Kafka（KRaft 单节点），真实 HTTP（RANDOM_PORT）。
  *
  * <p>隔离策略：每个用例前 TRUNCATE 全部业务表 + Redis FLUSHALL（服务端事务无法从测试侧回滚）。
  *
- * <p>不起 RabbitMQ 容器：当前代码未使用 AMQP，自动配置不会在建连前失败。
+ * <p>起 Kafka 容器：消息层经真实 broker 完成收发，取代 RabbitMQ。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public abstract class AbstractIntegrationTest {
@@ -64,9 +66,14 @@ public abstract class AbstractIntegrationTest {
   static final GenericContainer<?> REDIS =
       new GenericContainer<>(DockerImageName.parse("redis:7.0")).withExposedPorts(6379);
 
+  @ServiceConnection
+  static final KafkaContainer KAFKA =
+      new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.5.0"));
+
   static {
     MYSQL.start();
     REDIS.start();
+    KAFKA.start();
   }
 
   @Autowired protected TestRestTemplate rest;
@@ -176,6 +183,50 @@ public abstract class AbstractIntegrationTest {
 
   protected JsonNode doMiaosha(long userId, long goodsId) {
     return body(post("/miaosha/do_miaosha?goodsId=" + goodsId, userId));
+  }
+
+  // ---------- 异步链路等待辅助（票 03：受理 → 等待消费完成 → 轮询/对账断言） ----------
+
+  /**
+   * 轮询 GET /miaosha/result 直到终态（SUCCESS / FAILED）或超时。
+   *
+   * @return 超时返回最后一次轮询结果，供调用方断言给出可读失败
+   */
+  protected JsonNode awaitResult(long userId, long goodsId, Duration timeout) {
+    long deadline = System.nanoTime() + timeout.toNanos();
+    JsonNode last = null;
+    while (System.nanoTime() < deadline) {
+      last = body(get("/miaosha/result?goodsId=" + goodsId, userId));
+      JsonNode data = last.get("data");
+      if (data != null && !data.isNull()) {
+        String status = data.get("status").asText();
+        if ("SUCCESS".equals(status) || "FAILED".equals(status)) {
+          return last;
+        }
+      }
+      sleepQuietly(200);
+    }
+    return last;
+  }
+
+  /** 轮询 order_info 行数直到期望值或超时（超时不抛错，由调用方对账断言失败）。 */
+  protected void awaitOrderCount(int expected, Duration timeout) {
+    long deadline = System.nanoTime() + timeout.toNanos();
+    while (System.nanoTime() < deadline) {
+      if (orderCount() == expected) {
+        return;
+      }
+      sleepQuietly(200);
+    }
+  }
+
+  private static void sleepQuietly(long millis) {
+    try {
+      Thread.sleep(millis);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError("等待消费完成时被中断", e);
+    }
   }
 
   // ---------- 对账断言辅助 ----------

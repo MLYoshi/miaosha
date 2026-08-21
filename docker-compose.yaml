@@ -21,13 +21,21 @@ services:
       - "6379:6379"
     command: redis-server --requirepass 123456
 
-  # 3. RabbitMQ：用于秒杀请求排队、异步下单削峰
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: seckill-rabbitmq
+  # 3. Kafka：用于秒杀请求排队、异步下单削峰（KRaft 单节点，无 ZooKeeper）
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: seckill-kafka
     ports:
-      - "5672:5672"   # 客户端连接端口
-      - "15672:15672" # Web管理界面端口
+      - "9092:9092"
     environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: admin
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
