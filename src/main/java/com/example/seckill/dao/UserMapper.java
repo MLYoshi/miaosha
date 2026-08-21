@@ -6,4 +6,6 @@ import com.example.seckill.domain.User;
 
 public interface UserMapper {
     User getById(@Param("id") Long id);
+
+    int insert(User user);
 }

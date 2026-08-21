@@ -7,6 +7,8 @@ import com.example.seckill.domain.User;
 import com.example.seckill.vo.LoginVo;
 import com.example.seckill.dao.UserMapper;
 
+import java.time.LocalDateTime;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -33,6 +35,33 @@ public class UserService {
           throw new MiaoshaException(CodeMsg.PASSWORD_ERROR);
         }
         return user;
+    }
+
+    /**
+     * 注册新用户：手机号即用户 id（沿用登录约定）。
+     * 密码与登录校验同源：inputPassToDbPass(明文, 随机salt)。
+     */
+    public User register(LoginVo registerVo) {
+        Long id = Long.valueOf(registerVo.getMobile());
+        if (userMapper.getById(id) != null) {
+          throw new MiaoshaException(CodeMsg.MOBILE_ALREADY_EXIST);
+        }
+
+        String salt = randomSalt();
+        User user = new User();
+        user.setId(id);
+        user.setNickname("user" + registerVo.getMobile());
+        user.setPassword(MD5Util.inputPassToDbPass(registerVo.getPassword(), salt));
+        user.setSalt(salt);
+        user.setRegisterDate(LocalDateTime.now());
+        user.setLoginCount(0);
+        userMapper.insert(user);
+        return user;
+    }
+
+    /** 6 位随机盐（formPassToDbPass 依赖 salt.charAt(5)，长度必须 ≥ 6）。 */
+    private String randomSalt() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 6);
     }
 }
 

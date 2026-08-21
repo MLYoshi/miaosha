@@ -36,7 +36,19 @@ public class UserController {
     }
 
     /**
-     * 2. 受保护的个人信息接口
+     * 2. 注册接口
+     * 手机号+密码注册，成功后直接返回 JWT Token（免登录）
+     */
+    @PostMapping("/register")
+    public Result<String> register(@RequestBody @Valid LoginVo registerVo) {
+        // 手机号已注册会抛 MiaoshaException(MOBILE_ALREADY_EXIST)，由全局异常处理器接管
+        User user = userService.register(registerVo);
+
+        return Result.success(JwtUtil.generateToken(user.getId()));
+    }
+
+    /**
+     * 3. 受保护的个人信息接口
      */
     @GetMapping("/profile")
     public Result<User> profile(HttpServletRequest request) {

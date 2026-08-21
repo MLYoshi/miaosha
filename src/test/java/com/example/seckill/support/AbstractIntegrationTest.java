@@ -54,6 +54,7 @@ public abstract class AbstractIntegrationTest {
   protected static final int CODE_MIAOSHA_OVER = 500216;
   protected static final int CODE_MOBILE_NOT_EXIST = 500501;
   protected static final int CODE_PASSWORD_ERROR = 500502;
+  protected static final int CODE_MOBILE_ALREADY_EXIST = 500503;
 
   // 单例容器模式：static 块显式启动，全测试类共享，JVM 退出时由 Testcontainers shutdown hook 回收
   @ServiceConnection

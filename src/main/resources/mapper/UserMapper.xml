@@ -16,4 +16,12 @@
     WHERE id = #{id}
   </select>
 
+  <insert id="insert" parameterType="User">
+    INSERT INTO miaosha_user
+      (id, nickname, password, salt, head, register_date, last_login_date, login_count)
+    VALUES
+      (#{id}, #{nickname}, #{password}, #{salt}, #{head}, #{registerDate},
+       #{lastLoginDate}, #{loginCount})
+  </insert>
+
 </mapper>

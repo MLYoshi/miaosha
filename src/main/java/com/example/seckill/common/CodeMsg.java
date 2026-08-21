@@ -10,7 +10,8 @@ public enum CodeMsg {
   MIAOSHA_OVER(500216, "秒杀已结束"),
   MIAOSHA_REPEAT(500212, "不能重复秒杀"),
   MOBILE_NOT_EXIST(500501, "手机号不存在"),
-  PASSWORD_ERROR(500502, "密码错误");
+  PASSWORD_ERROR(500502, "密码错误"),
+  MOBILE_ALREADY_EXIST(500503, "手机号已注册");
 
   private final int code;
   private final String msg;
