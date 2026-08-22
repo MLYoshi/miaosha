@@ -1,6 +1,7 @@
 # 数据库：schema 与种子数据见 docs/db-design.md（旧 miaosha.sql 业务模型的人工维护版）
-# 新克隆项目若 mysql_data 为空，请按 docs/db-design.md 第 3 节重建表结构，并按第 4 节插入种子数据
-# 导入示例：docker exec -i seckill-mysql mysql -uroot -proot < your_schema.sql
+# 新克隆项目若 mysql_data 为空，直接执行自包含种子脚本（含建表 + 种子数据 + 时间窗修正）：
+#   docker exec -i seckill-mysql mysql -uroot -proot --default-character-set=utf8mb4 < sql/fix-seed-time-window.sql
+# 详细说明见 sql/README.md
 services:
   # 1. MySQL：用于最终订单落地和数据持久化
   mysql:
