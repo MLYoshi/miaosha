@@ -45,3 +45,6 @@ graphify-out/
 *.tmp
 *.swp
 *~
+
+### CodeBuddy ###
+.codebuddy
