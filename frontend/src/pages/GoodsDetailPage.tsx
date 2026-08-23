@@ -1,23 +1,27 @@
 import { useQuery } from '@tanstack/react-query'
-import { Button, Card, Col, Divider, Image, Result, Row, Skeleton, Typography } from 'antd'
-import { useCallback } from 'react'
+import { Button, Card, Col, Divider, Image, Modal, Result, Row, Skeleton, Typography } from 'antd'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../api/errorCode'
 import { getGoodsDetail } from '../api/goods'
 import { MIAOSHA_STATUS, type GoodsDetailVo } from '../api/types'
 import placeholderImg from '../assets/goods-placeholder.svg'
 import { useCountdown } from '../hooks/useCountdown'
+import { useSeckill } from '../hooks/useSeckill'
 import { formatDateTime, formatPrice, resolveGoodsImg } from '../utils/goods'
+import { SECKILL_FLOW_PHASE } from '../utils/seckillFlow'
 import { SECKILL_PHASE, formatCountdown, resolveSeckillPhase, type SeckillPhase } from '../utils/seckill'
 
 /**
- * 商品详情页（issue 05）：
+ * 商品详情页（issue 05 + 06）：
  * - GET /goods/detail/{goodsId}：大图、标题、详情、原价/秒杀价、库存与秒杀窗口
  * - 秒杀状态机以后端 miaoshaStatus 为权威：
- *   未开始（0）→ 倒计时按钮；进行中（1）→ 高亮抢购按钮（点击行为下一票实现）；
+ *   未开始（0）→ 倒计时按钮；进行中（1）→ 高亮抢购按钮；
  *   已结束（2）→ 禁用「已结束」
  * - 倒计时以后端 remainSeconds 驱动本地递减，归零后重拉详情校准，
  *   校准完成前保持禁用（CALIBRATING），不允许本地时钟归零直接点亮
+ * - 抢购（issue 06）：点击受理 → PROCESSING 原地轮询结果；SUCCESS 弹窗展示订单号；
+ *   业务失败 toast 提示；库存不足/已结束回到禁用终局；受理到终态期间按钮 loading
  * - 商品不存在（500104）：友好提示而非白屏
  */
 
@@ -45,13 +49,32 @@ function DetailSkeleton() {
   )
 }
 
-/** 秒杀按钮：按状态机形态渲染，本票只做按钮状态，点击行为在下一票实现 */
-function SeckillButton({ phase, remain }: { phase: SeckillPhase; remain: number }) {
+/** 秒杀按钮：按状态机形态渲染；busy 为受理/排队中 loading 防连点；finished 为禁用终局（库存不足/已结束） */
+function SeckillButton({
+  phase,
+  remain,
+  busy,
+  finished,
+  onSubmit,
+}: {
+  phase: SeckillPhase
+  remain: number
+  busy: boolean
+  finished: boolean
+  onSubmit: () => void
+}) {
+  if (finished) {
+    return (
+      <Button size="large" disabled style={{ minWidth: 200 }}>
+        已抢完
+      </Button>
+    )
+  }
   switch (phase) {
     case SECKILL_PHASE.READY:
       return (
-        <Button type="primary" danger size="large" style={{ minWidth: 200 }}>
-          立即抢购
+        <Button type="primary" danger size="large" loading={busy} onClick={onSubmit} style={{ minWidth: 200 }}>
+          {busy ? '抢购中…' : '立即抢购'}
         </Button>
       )
     case SECKILL_PHASE.COUNTDOWN:
@@ -80,6 +103,15 @@ function GoodsDetail({ detail, remain }: { detail: GoodsDetailVo; remain: number
   const goods = detail.goods
   const phase = resolveSeckillPhase(detail.miaoshaStatus, remain)
   const imgSrc = resolveGoodsImg(goods.goodsImg, IMG_BASE) || placeholderImg
+
+  // 抢购流转：受理 → 轮询 → 终态（issue 06）
+  const seckill = useSeckill(goods.id)
+  const [successOpen, setSuccessOpen] = useState(false)
+  useEffect(() => {
+    if (seckill.phase === SECKILL_FLOW_PHASE.SUCCESS) {
+      setSuccessOpen(true)
+    }
+  }, [seckill.phase])
 
   return (
     <Card>
@@ -116,7 +148,13 @@ function GoodsDetail({ detail, remain }: { detail: GoodsDetailVo; remain: number
           </Paragraph>
 
           <div style={{ marginTop: 24 }}>
-            <SeckillButton phase={phase} remain={remain} />
+            <SeckillButton
+              phase={phase}
+              remain={remain}
+              busy={seckill.isBusy}
+              finished={seckill.finished}
+              onSubmit={() => void seckill.submit()}
+            />
           </div>
         </Col>
       </Row>
@@ -126,6 +164,23 @@ function GoodsDetail({ detail, remain }: { detail: GoodsDetailVo; remain: number
       <Paragraph style={{ whiteSpace: 'pre-wrap' }}>
         {goods.goodsDetail?.trim() || '暂无详情'}
       </Paragraph>
+
+      {/* 抢购成功：弹窗展示订单号，页面不跳转 */}
+      <Modal
+        open={successOpen}
+        title="抢购成功"
+        okText="知道了"
+        cancelButtonProps={{ style: { display: 'none' } }}
+        onOk={() => setSuccessOpen(false)}
+        onCancel={() => setSuccessOpen(false)}
+      >
+        <Paragraph>
+          恭喜您抢购成功！订单号：
+          <Text strong copyable>
+            {seckill.orderId}
+          </Text>
+        </Paragraph>
+      </Modal>
     </Card>
   )
 }
