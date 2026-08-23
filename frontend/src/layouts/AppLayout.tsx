@@ -13,7 +13,11 @@ export default function AppLayout() {
   const location = useLocation()
   const { signOut } = useAuth()
 
-  const selectedKey = location.pathname === '/profile' ? 'profile' : 'goods'
+  const selectedKey = location.pathname.startsWith('/admin/preheat')
+    ? 'admin/preheat'
+    : location.pathname === '/profile'
+      ? 'profile'
+      : 'goods'
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -27,6 +31,7 @@ export default function AppLayout() {
           items={[
             { key: 'goods', label: '商品列表' },
             { key: 'profile', label: '个人信息' },
+            { key: 'admin/preheat', label: '预热工具' },
           ]}
           style={{ flex: 1, minWidth: 0 }}
         />

@@ -5,6 +5,7 @@ import GoodsListPage from './pages/GoodsListPage'
 import GoodsDetailPage from './pages/GoodsDetailPage'
 import LoginPage from './pages/LoginPage'
 import NotFoundPage from './pages/NotFoundPage'
+import PreheatPage from './pages/PreheatPage'
 import ProfilePage from './pages/ProfilePage'
 
 export default function App() {
@@ -17,6 +18,8 @@ export default function App() {
           <Route index element={<GoodsListPage />} />
           <Route path="goods/:goodsId" element={<GoodsDetailPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          {/* 预热工具页（联调用）：后端无角色体系，仅需登录 */}
+          <Route path="admin/preheat" element={<PreheatPage />} />
         </Route>
       </Route>
       <Route path="*" element={<NotFoundPage />} />
