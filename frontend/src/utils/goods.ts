@@ -30,3 +30,22 @@ export function formatPrice(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return '—'
   return `¥${value.toFixed(2)}`
 }
+
+/**
+ * 后端时间串格式化（yyyy-MM-dd HH:mm:ss）：
+ * - 后端 LocalDateTime 序列化为空格分隔，Safari 等环境不接受，统一替换为 'T' 再解析
+ * - 解析失败时原样返回，空值返回占位符
+ */
+export function formatDateTime(value: string | null | undefined): string {
+  const raw = (value ?? '').trim()
+  if (!raw) return '—'
+
+  const date = new Date(raw.replace(' ', 'T'))
+  if (Number.isNaN(date.getTime())) return raw
+
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  )
+}

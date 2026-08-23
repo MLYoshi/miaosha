@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatPrice, resolveGoodsImg } from './goods'
+import { formatDateTime, formatPrice, resolveGoodsImg } from './goods'
 
 /**
  * 商品展示纯函数接缝测试（对应 issue 04 验收项）：
@@ -71,5 +71,27 @@ describe('formatPrice', () => {
     expect(formatPrice(null)).toBe('—')
     expect(formatPrice(undefined)).toBe('—')
     expect(formatPrice(Number.NaN)).toBe('—')
+  })
+})
+
+describe('formatDateTime', () => {
+  it('空值返回占位符', () => {
+    expect(formatDateTime(null)).toBe('—')
+    expect(formatDateTime(undefined)).toBe('—')
+    expect(formatDateTime('')).toBe('—')
+    expect(formatDateTime('   ')).toBe('—')
+  })
+
+  it('空格分隔的 LocalDateTime 串（yyyy-MM-dd HH:mm:ss）正常解析', () => {
+    // 无时区信息，按本地时间解析后再本地格式化，输出应与输入一致
+    expect(formatDateTime('2026-08-24 10:00:00')).toBe('2026-08-24 10:00:00')
+  })
+
+  it('ISO T 分隔串同样支持，输出统一为空格分隔', () => {
+    expect(formatDateTime('2026-01-02T03:04:05')).toBe('2026-01-02 03:04:05')
+  })
+
+  it('无法解析的字符串原样返回', () => {
+    expect(formatDateTime('not-a-date')).toBe('not-a-date')
   })
 })
