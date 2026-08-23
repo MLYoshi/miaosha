@@ -1,4 +1,6 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
+import { AUTH_UNAUTHORIZED_EVENT } from '../auth/events'
+import { buildLoginUrl } from '../auth/redirect'
 import { clearToken, getToken } from '../auth/token'
 import { ApiError, resolveErrorMessage } from './errorCode'
 import type { Result } from './types'
@@ -28,7 +30,9 @@ http.interceptors.request.use((config) => {
 
 function redirectToLogin(): void {
   if (window.location.pathname !== '/login') {
-    window.location.href = '/login'
+    // 携带当前完整路径，登录成功后回跳原目标页
+    const { pathname, search, hash } = window.location
+    window.location.href = buildLoginUrl(pathname + search + hash)
   }
 }
 
@@ -49,9 +53,10 @@ http.interceptors.response.use(
     if (error.response) {
       const { status, data } = error.response
 
-      // 1. 未登录 / token 失效：清 token 跳登录
+      // 1. 未登录 / token 失效：清 token，派发事件让 AuthContext 同步，再带 redirect 跳登录
       if (status === 401) {
         clearToken()
+        window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT))
         redirectToLogin()
         return Promise.reject(new ApiError('登录已过期，请重新登录', 401, 401))
       }

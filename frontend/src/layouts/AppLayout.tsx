@@ -1,19 +1,19 @@
 import { Layout, Menu, Space, Button } from 'antd'
-import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { clearToken, getToken } from '../auth/token'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 
 const { Header, Content, Footer } = Layout
 
-/** 带顶部导航的页面壳：未登录重定向到 /login */
+/**
+ * 带顶部导航的页面壳。
+ * 未登录拦截由外层 RequireAuth 守卫统一处理（携带 redirect 回跳）。
+ */
 export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { signOut } = useAuth()
 
   const selectedKey = location.pathname === '/profile' ? 'profile' : 'goods'
-
-  if (!getToken()) {
-    return <Navigate to="/login" replace />
-  }
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -35,8 +35,8 @@ export default function AppLayout() {
             type="text"
             style={{ color: 'rgba(255,255,255,0.85)' }}
             onClick={() => {
-              clearToken()
-              navigate('/login')
+              signOut()
+              navigate('/login', { replace: true })
             }}
           >
             退出登录
