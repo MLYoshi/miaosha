@@ -67,6 +67,7 @@ services:
     ports:
       - "8080:8080"
     environment:
+      TZ: Asia/Shanghai # JVM 默认时区必须与 SQL 种子/准备脚本的 +08:00 时间窗一致，否则 checkInWindow 误判「秒杀未开始」
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
       REDIS_HOST: redis
