@@ -172,3 +172,4 @@ wait
 5. **阈值校准**：当前 `http_req_failed < 1%`、`p(95) < 300ms` 为占位值。跑完 baseline 后依据 `accept_latency` 各桶实际分布回填到脚本 `thresholds`，并以此作为优化前后对比的判定线。
 6. **setup 耗时**：spike 首次运行 setup 需串行注册 1 万账号（localhost 约 1~2 分钟）；重复运行时一半注册一半登录，耗时接近。
 7. **业务码速查**：`0` 成功 / `500212` 重复 / `500214` 售罄 / `500215` 未开始 / `500216` 已结束 / `500503` 手机号已注册（setup 预期内，自动回退登录）。
+8. **多项目共存（容器名/地址覆盖）**：宿主机上若其他项目的容器占用了 `seckill-*` 名字或 `localhost:9092`（同名消费组会互抢分区、污染压测），可经根目录 `docker-compose.override.yaml` 把容器名改为 `seckill2-*`、backend 端口改映射；压测脚本支持 `MYSQL_CONTAINER` / `REDIS_CONTAINER` / `KAFKA_CONTAINER` / `BACKEND_CONTAINER` / `BASE_URL` 环境变量注入（示例见 `benchmarks/2026-09-05-async-send-tomcat-tuned.md` §7）。

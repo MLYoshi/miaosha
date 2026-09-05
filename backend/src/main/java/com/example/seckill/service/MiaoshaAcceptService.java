@@ -23,7 +23,8 @@ import org.springframework.stereotype.Service;
  * <p>降级哲学（多层兜底）：
  * <ul>
  *   <li>Redis 不可用 → 直连 DB 落库（既有路径，行为不变），由 DB 条件扣库存 + 唯一键兜底
- *   <li>Kafka 发送失败 → 降级同步落库，用户直接拿单；降级后迟到的重复消息由
+ *   <li>Kafka 发送失败（异步回调，基线压测 2026-08-26：join 阻塞是 2s 长尾根源）→
+ *       降级同步落库并回写 SUCCESS，用户轮询拿单；降级后迟到的重复消息由
  *       DB 唯一键拦下后跳过补偿（见消费者编排），不产生重复订单
  * </ul>
  *
@@ -34,6 +35,8 @@ import org.springframework.stereotype.Service;
 public class MiaoshaAcceptService {
 
   private static final Logger log = LoggerFactory.getLogger(MiaoshaAcceptService.class);
+
+  private static final String SUCCESS_PREFIX = "SUCCESS:";
 
   private final MiaoshaRedisStore store;
   private final MiaoshaService miaoshaService;
@@ -70,23 +73,52 @@ public class MiaoshaAcceptService {
       case OK -> { }
     }
 
-    // 预扣成功：发消息受理，落库移出请求路径
+    // 预扣成功：异步发送，落库（含发送失败降级）全部移出请求路径——
+    // 发送不再阻塞等待 broker 确认（基线压测 2026-08-26：join 阻塞是 2s 长尾根源）
+    SeckillOrderMessage message = new SeckillOrderMessage(userId, goodsId, requestId);
     try {
-      sender.send(new SeckillOrderMessage(userId, goodsId, requestId));
-      return MiaoshaAcceptVo.processing();
+      sender.send(message, this::degradeAfterSendFailure);
     } catch (Exception e) {
-      // Kafka 发送失败降级：同步落库，用户直接拿单（沿用 Redis 降级哲学）
-      log.warn("Kafka 发送失败，降级同步落库 goodsId={} userId={}: {}", goodsId, userId,
-          e.getMessage());
-      try {
-        OrderInfo order = miaoshaService.createOrder(userId, goodsId);
-        store.markSuccess(goodsId, userId, order.getId());
-        return MiaoshaAcceptVo.success(order.getId());
-      } catch (RuntimeException dbEx) {
-        // 降级落库失败：补偿 Redis
-        store.compensate(goodsId, userId, requestId);
-        throw dbEx;
+      // 兜底：接缝实现违背「不抛」契约时，降级仍在请求线程执行（正常路径不应发生）
+      log.error("发送调用意外异常，请求线程内同步降级 goodsId={} userId={}", goodsId, userId, e);
+      degradeAfterSendFailure(message, e);
+    }
+    return MiaoshaAcceptVo.processing();
+  }
+
+  /** 该用户该商品的受理是否已有成功结果（降级落库 / 消费落库后 result=SUCCESS:{orderId}）。 */
+  private boolean alreadySucceeded(Long goodsId, Long userId) {
+    String result = store.getResult(goodsId, userId);
+    return result != null && result.startsWith(SUCCESS_PREFIX);
+  }
+
+  /**
+   * Kafka 发送失败（异步回调）的降级：同步落库并回写 SUCCESS，用户轮询拿单；
+   * 落库失败则补偿 Redis（库存回补、清标记、result=FAILED）。
+   *
+   * <p>与消费侧 {@link OrderFulfillmentService} 的补偿守卫对称：发送超时但消息实际
+   * 送达且已被消费成功时，降级落库会被 DB 唯一键拦下——此时已有成功结果，跳过补偿，
+   * 避免把已成功的库存回补出去。
+   *
+   * <p>在发送方派发的降级线程池执行，不得阻塞、不得向发送方上抛异常。
+   */
+  private void degradeAfterSendFailure(SeckillOrderMessage message, Exception cause) {
+    Long userId = message.getUserId();
+    Long goodsId = message.getGoodsId();
+    log.warn("Kafka 发送失败，降级同步落库 goodsId={} userId={} requestId={}: {}", goodsId,
+        userId, message.getRequestId(), cause.getMessage());
+    try {
+      OrderInfo order = miaoshaService.createOrder(userId, goodsId);
+      store.markSuccess(goodsId, userId, order.getId());
+    } catch (RuntimeException dbEx) {
+      if (alreadySucceeded(goodsId, userId)) {
+        log.warn("降级落库被 DB 唯一键拦下且已有成功结果，跳过补偿 goodsId={} userId={} requestId={}",
+            goodsId, userId, message.getRequestId());
+        return;
       }
+      log.warn("降级同步落库失败，执行补偿 goodsId={} userId={} requestId={}", goodsId, userId,
+          message.getRequestId(), dbEx);
+      store.compensate(goodsId, userId, message.getRequestId());
     }
   }
 

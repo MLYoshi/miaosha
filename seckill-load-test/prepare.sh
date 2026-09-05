@@ -21,11 +21,18 @@ case "$MODE" in
     ;;
 esac
 
+# 容器名/后端地址可用环境变量覆盖（多项目共存时，见 docker-compose.override.yaml）
+MYSQL_CONTAINER="${MYSQL_CONTAINER:-seckill-mysql}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-seckill-redis}"
+KAFKA_CONTAINER="${KAFKA_CONTAINER:-seckill-kafka}"
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-seckill-backend}"
+BASE_URL="${BASE_URL:-http://localhost:8080}"
+
 # 等 backend 恢复健康（actuator 仅暴露 health,info）
 wait_backend_healthy() {
   echo -n "==> 等待 backend 恢复健康"
   for _ in $(seq 1 90); do
-    if curl -fsS http://localhost:8080/actuator/health >/dev/null 2>&1; then
+    if curl -fsS "${BASE_URL}/actuator/health" >/dev/null 2>&1; then
       echo " OK"
       return 0
     fi
@@ -35,7 +42,12 @@ wait_backend_healthy() {
   return 1
 }
 
-MYSQL=(docker exec -i seckill-mysql mysql -uroot -proot --default-character-set=utf8mb4 miaosha)
+# 容器名可用环境变量覆盖（多项目共存时，如 docker-compose.override.yaml 用 seckill2-* 前缀）
+REDIS_CONTAINER="${REDIS_CONTAINER:-seckill-redis}"
+KAFKA_CONTAINER="${KAFKA_CONTAINER:-seckill-kafka}"
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-seckill-backend}"
+
+MYSQL=(docker exec -i "${MYSQL_CONTAINER}" mysql -uroot -proot --default-character-set=utf8mb4 miaosha)
 
 echo "==> [1/4] 清理 goodsId=${GOODS_ID} 历史订单（避免唯一键触发 REPEAT）"
 "${MYSQL[@]}" <<SQL
@@ -57,19 +69,19 @@ SELECT goods_id, stock_count, start_date, end_date
 SQL
 
 echo "==> [3/4] 清空 Redis 秒杀 key（miaosha:*，含用户抢购标记，防旧标记导致 REPEAT）"
-docker exec seckill-redis sh -c \
+docker exec "${REDIS_CONTAINER}" sh -c \
   "redis-cli -a 123456 --no-auth-warning --scan --pattern 'miaosha:*' | xargs -r redis-cli -a 123456 --no-auth-warning DEL"
 
 echo "==> [4/4] 丢弃 Kafka 积压（seckill-order / seckill-order-dlt）并重启 backend"
 # 上一轮压测可能残留未消费的消息：若不清，消费者会继续落库/补偿，
 # 污染本轮库存（上一轮 spike 遗留消息扣光 DB 库存并回灌 Redis 即此原因）。
 # 方案：消费组 offset 重置到 latest（跳过积压）+ 重启 backend 使消费者重新订阅最新位点。
-docker exec seckill-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+docker exec "${KAFKA_CONTAINER}" /opt/kafka/bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --group seckill \
   --topic seckill-order --topic seckill-order-dlt \
   --reset-offsets --to-latest --execute >/dev/null 2>&1 \
   || echo "  （消费组不存在或位点已最新，跳过 reset）"
-docker restart seckill-backend >/dev/null && wait_backend_healthy
+docker restart "${BACKEND_CONTAINER}" >/dev/null && wait_backend_healthy
 
 echo "==> 完成。Redis 库存由 k6 脚本 setup 内调用 /admin/preheat 预热，直接运行：k6 run ${MODE}.js"

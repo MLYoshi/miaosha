@@ -33,6 +33,12 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# 容器名可用环境变量覆盖（多项目共存时，如 docker-compose.override.yaml 用 seckill2-* 前缀）
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-seckill-backend}"
+KAFKA_CONTAINER="${KAFKA_CONTAINER:-seckill-kafka}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-seckill-redis}"
+MYSQL_CONTAINER="${MYSQL_CONTAINER:-seckill-mysql}"
+
 LABEL=""
 INTERVAL=5
 DURATION=0
@@ -86,20 +92,20 @@ sample_docker_stats() {
 sample_jvm() {
   local ts=$(date +%s)
   local pid threads heap=""
-  pid=$(docker exec seckill-backend sh -c "pgrep -f 'java' | head -1" 2>/dev/null || true)
+  pid=$(docker exec "${BACKEND_CONTAINER}" sh -c "pgrep -f 'java' | head -1" 2>/dev/null || true)
   [ -z "$pid" ] && return 0
-  threads=$(docker exec seckill-backend sh -c "grep '^Threads:' /proc/$pid/status 2>/dev/null | awk '{print \$2}'" 2>/dev/null || true)
+  threads=$(docker exec "${BACKEND_CONTAINER}" sh -c "grep '^Threads:' /proc/$pid/status 2>/dev/null | awk '{print \$2}'" 2>/dev/null || true)
   [ -z "$threads" ] && return 0
   # jcmd 可用（JDK 镜像）时取堆 used；JRE 镜像则留 NA
-  if docker exec seckill-backend sh -c "jcmd $pid GC.heap_info" >/dev/null 2>&1; then
-    heap=$(docker exec seckill-backend sh -c "jcmd $pid GC.heap_info 2>/dev/null" | awk -F: '/used /{gsub(/[^0-9.]/,"",$2); printf "%.1f", $2/1048576; exit}')
+  if docker exec "${BACKEND_CONTAINER}" sh -c "jcmd $pid GC.heap_info" >/dev/null 2>&1; then
+    heap=$(docker exec "${BACKEND_CONTAINER}" sh -c "jcmd $pid GC.heap_info 2>/dev/null" | awk -F: '/used /{gsub(/[^0-9.]/,"",$2); printf "%.1f", $2/1048576; exit}')
   fi
   echo -e "$ts\t$threads\t${heap:-NA}" >> "$DIR/jvm.tsv"
 }
 
 sample_kafka() {
   local ts=$(date +%s)
-  docker exec seckill-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+  docker exec "${KAFKA_CONTAINER}" /opt/kafka/bin/kafka-consumer-groups.sh \
     --bootstrap-server localhost:9092 --group seckill --describe 2>/dev/null |
     awk -v ts="$ts" -v d="$DIR" '
       $2 != "TOPIC" && NF >= 6 && $1 != "" && $1 != "Consumer" {
@@ -114,18 +120,18 @@ sample_kafka() {
 sample_redis() {
   local ts=$(date +%s)
   local ops mem clients csys cusr
-  ops=$(docker exec seckill-redis redis-cli -a 123456 --no-auth-warning INFO stats 2>/dev/null | awk -F: '/^instantaneous_ops_per_sec:/{gsub(/[^0-9]/,"",$2); print $2}')
-  mem=$(docker exec seckill-redis redis-cli -a 123456 --no-auth-warning INFO memory 2>/dev/null | awk -F: '/^used_memory:/{gsub(/[^0-9]/,"",$2); print $2}')
-  clients=$(docker exec seckill-redis redis-cli -a 123456 --no-auth-warning INFO clients 2>/dev/null | awk -F: '/^connected_clients:/{gsub(/[^0-9]/,"",$2); print $2}')
-  csys=$(docker exec seckill-redis redis-cli -a 123456 --no-auth-warning INFO cpu 2>/dev/null | awk -F: '/^used_cpu_sys:/{gsub(/[^0-9.]/,"",$2); print $2}')
-  cusr=$(docker exec seckill-redis redis-cli -a 123456 --no-auth-warning INFO cpu 2>/dev/null | awk -F: '/^used_cpu_user:/{gsub(/[^0-9.]/,"",$2); print $2}')
+  ops=$(docker exec "${REDIS_CONTAINER}" redis-cli -a 123456 --no-auth-warning INFO stats 2>/dev/null | awk -F: '/^instantaneous_ops_per_sec:/{gsub(/[^0-9]/,"",$2); print $2}')
+  mem=$(docker exec "${REDIS_CONTAINER}" redis-cli -a 123456 --no-auth-warning INFO memory 2>/dev/null | awk -F: '/^used_memory:/{gsub(/[^0-9]/,"",$2); print $2}')
+  clients=$(docker exec "${REDIS_CONTAINER}" redis-cli -a 123456 --no-auth-warning INFO clients 2>/dev/null | awk -F: '/^connected_clients:/{gsub(/[^0-9]/,"",$2); print $2}')
+  csys=$(docker exec "${REDIS_CONTAINER}" redis-cli -a 123456 --no-auth-warning INFO cpu 2>/dev/null | awk -F: '/^used_cpu_sys:/{gsub(/[^0-9.]/,"",$2); print $2}')
+  cusr=$(docker exec "${REDIS_CONTAINER}" redis-cli -a 123456 --no-auth-warning INFO cpu 2>/dev/null | awk -F: '/^used_cpu_user:/{gsub(/[^0-9.]/,"",$2); print $2}')
   echo -e "$ts\t$ops\t$mem\t$clients\t$csys\t$cusr" >> "$DIR/redis.tsv"
 }
 
 sample_mysql() {
   local ts=$(date +%s)
   local s tc tr q sl
-  s=$(docker exec seckill-mysql mysql -uroot -proot -N -e \
+  s=$(docker exec "${MYSQL_CONTAINER}" mysql -uroot -proot -N -e \
       "SHOW GLOBAL STATUS WHERE Variable_name IN ('Threads_connected','Threads_running','Queries','Slow_queries');" 2>/dev/null || true)
   tc=$(echo "$s" | awk '$1=="Threads_connected"{print $2}')
   tr=$(echo "$s" | awk '$1=="Threads_running"{print $2}')

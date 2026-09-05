@@ -21,9 +21,10 @@ import org.junit.jupiter.api.Test;
  * 秒杀受理编排直连单测：内存假 Redis 适配器 + 假消息发送器 + mock 下单事务，
  * 不起 Spring / HTTP / Redis / Kafka。
  *
- * <p>受理语义（票 03）：预扣成功 → 发 Kafka → 立即返回受理中，DB 写入移出请求路径；
- * Kafka 发送失败降级同步落库（用户直接拿单）；Redis 不可用直连 DB 的既有降级保持不变。
- * F9 语义（未预热先返 500214，先于 DB 商品校验）在此单测化。
+ * <p>受理语义（票 03 + 异步化改造）：预扣成功 → 异步发 Kafka → 立即返回受理中，DB 写入
+ * 移出请求路径；Kafka 发送失败经异步回调降级同步落库（回写 SUCCESS 供轮询拿单）；
+ * Redis 不可用直连 DB 的既有降级保持不变。F9 语义（未预热先返 500214，先于 DB 商品校验）
+ * 在此单测化。
  */
 class MiaoshaAcceptServiceTest {
 
@@ -137,9 +138,9 @@ class MiaoshaAcceptServiceTest {
     verify(miaoshaService).createOrder(USER, GOODS);
   }
 
-  // ---------- Kafka 发送失败降级 ----------
+  // ---------- Kafka 发送失败降级（异步回调，Fake 同步触发等价模拟） ----------
 
-  @Test // 发送失败 → 降级同步落库：用户直接拿单，回写 SUCCESS
+  @Test // 发送失败 → 回调降级同步落库：请求仍返回受理中，回写 SUCCESS 供轮询拿单
   void sendFails_degradesToSyncOrder() {
     store.setStock(GOODS, 5, TTL);
     sender.failSendWith(new RuntimeException("kafka down"));
@@ -147,24 +148,26 @@ class MiaoshaAcceptServiceTest {
 
     MiaoshaAcceptVo result = accept.execute(USER, GOODS);
 
-    assertThat(result.getStatus()).as("降级落库成功应直接返回成功态").isEqualTo(MiaoshaAcceptVo.Status.SUCCESS);
-    assertThat(result.getOrderId()).isEqualTo(7L);
+    assertThat(result.getStatus())
+        .as("发送失败不再阻塞请求路径，仍返回受理中")
+        .isEqualTo(MiaoshaAcceptVo.Status.PROCESSING);
+    assertThat(result.getOrderId()).as("降级异步进行，响应不携带订单号").isNull();
+
     assertThat(store.stock(GOODS)).isEqualTo(4);
-    assertThat(store.result(GOODS, USER)).isEqualTo("SUCCESS:7");
+    assertThat(store.result(GOODS, USER)).as("降级落库后回写成功结果供轮询").isEqualTo("SUCCESS:7");
   }
 
-  @Test // 发送失败 + DB 也失败 → 补偿 Redis（库存回补、标记清除、result=FAILED），异常上抛
+  @Test // 发送失败 + DB 也失败 → 回调补偿 Redis（库存回补、标记清除、result=FAILED）
   void sendFailsAndDbFails_compensates() {
     store.setStock(GOODS, 5, TTL);
     sender.failSendWith(new RuntimeException("kafka down"));
     when(miaoshaService.createOrder(USER, GOODS))
         .thenThrow(new MiaoshaException(CodeMsg.MIAOSHA_REPEAT));
 
-    assertThatThrownBy(() -> accept.execute(USER, GOODS))
-        .isInstanceOfSatisfying(
-            MiaoshaException.class,
-            e -> assertThat(e.getCodeMsg()).isEqualTo(CodeMsg.MIAOSHA_REPEAT));
+    MiaoshaAcceptVo result = accept.execute(USER, GOODS);
 
+    assertThat(result.getStatus()).as("降级在回调线程进行，请求正常返回受理中")
+        .isEqualTo(MiaoshaAcceptVo.Status.PROCESSING);
     assertThat(store.stock(GOODS)).as("库存应回补").isEqualTo(5);
     assertThat(store.userMark(GOODS, USER)).as("user 标记应清除").isNull();
     assertThat(store.result(GOODS, USER)).isEqualTo("FAILED");
@@ -178,7 +181,8 @@ class MiaoshaAcceptServiceTest {
         .thenThrow(new MiaoshaException(CodeMsg.MIAOSHA_REPEAT));
 
     for (int i = 0; i < 3; i++) {
-      assertThatThrownBy(() -> accept.execute(USER, GOODS)).isInstanceOf(MiaoshaException.class);
+      assertThat(accept.execute(USER, GOODS).getStatus())
+          .isEqualTo(MiaoshaAcceptVo.Status.PROCESSING);
     }
 
     assertThat(store.stock(GOODS)).as("反复重试不泄漏库存").isEqualTo(5);

@@ -37,8 +37,8 @@ class KafkaRoundTripTest extends AbstractIntegrationTest {
         .opsForValue()
         .set(RedisKeyBuilder.user(GOODS_ID, USER_ID), REQUEST_ID, Duration.ofHours(1));
 
-    // 生产者可靠发送（acks=all + 幂等），key 随机打散
-    producer.send(new SeckillOrderMessage(USER_ID, GOODS_ID, REQUEST_ID));
+    // 生产者异步发送（acks=all + 幂等），key 随机打散；发送失败经回调降级，本用例不注入失败
+    producer.send(new SeckillOrderMessage(USER_ID, GOODS_ID, REQUEST_ID), (message, cause) -> {});
 
     // 轮询 Redis 结果：消费编排补偿写入 FAILED 即证明消息经真实 broker 往返完成
     long deadline = System.nanoTime() + TIMEOUT.toNanos();

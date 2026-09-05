@@ -1,5 +1,9 @@
 server:
   port: 8080
+  tomcat:
+    threads:
+      # 基线压测调优（2026-08-26）：默认 200 线程在 500 RPS 下排队加剧长尾，扩容做二分定位
+      max: 500
 
 spring:
   application:

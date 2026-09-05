@@ -1,5 +1,9 @@
 package com.example.seckill.message;
 
+import java.util.concurrent.Executor;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +63,33 @@ public class KafkaConfig {
   @Bean
   public NewTopic seckillOrderDltTopic() {
     return new NewTopic(ORDER_DLT_TOPIC, PARTITIONS, REPLICATION_FACTOR);
+  }
+
+  /**
+   * 发送失败降级回调的专用线程池（异步化改造，基线压测 2026-08-26）：
+   * 生产者失败回调（Kafka IO 线程）只做提交，降级落库 / 补偿在本池执行，
+   * 与请求线程、生产者 IO 线程互相隔离。
+   *
+   * <p>降级任务不允许丢弃（丢则预扣库存泄漏）：队列打满时由派发线程内联执行兜底。
+   */
+  @Bean(name = "sendDegradeExecutor")
+  public Executor sendDegradeExecutor() {
+    int core = 2;
+    int max = Math.max(core, Runtime.getRuntime().availableProcessors());
+    ThreadPoolExecutor executor =
+        new ThreadPoolExecutor(
+            core,
+            max,
+            60L,
+            TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(1000),
+            r -> {
+              Thread t = new Thread(r, "kafka-send-degrade");
+              t.setDaemon(true);
+              return t;
+            });
+    executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+    return executor;
   }
 
   /**
