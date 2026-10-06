@@ -46,11 +46,11 @@ frontend/
 
 ### 0. 前置：后端服务就绪
 
-前端依赖后端（Spring Boot）+ MySQL + Redis + Kafka。后端启动见 `backend/` 目录与 `backend/docker-compose.yaml`：
+前端依赖后端（Spring Boot）+ MySQL + Redis + RabbitMQ。后端启动见 `backend/` 目录与 `backend/docker-compose.yaml`：
 
 ```bash
 cd backend
-docker compose up -d          # MySQL + Redis + Kafka
+docker compose up -d          # MySQL + Redis + RabbitMQ
 # 后端 Spring Boot 监听 :8080
 ```
 

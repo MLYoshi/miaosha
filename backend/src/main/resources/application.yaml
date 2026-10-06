@@ -22,23 +22,18 @@ spring:
       password: 123456
       timeout: 3000ms
 
-  kafka:
-    bootstrap-servers: ${KAFKA_HOST:localhost}:${KAFKA_PORT:9092}
-    producer:
-      acks: all                                          # 可靠发送：等待所有副本确认
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      properties:
-        enable.idempotence: true                          # 幂等生产者
-    consumer:
-      group-id: seckill
-      enable-auto-commit: false                           # 手动 ack
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: com.example.seckill.*
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: guest
+    password: guest
+    publisher-confirm-type: correlated                     # 可靠发送：发布确认（对应原 acks=all）
+    publisher-returns: true
     listener:
-      ack-mode: manual                                    # 消费者显式调用 Acknowledgment.acknowledge()
+      simple:
+        acknowledge-mode: manual                          # 消费者显式 basicAck
+        concurrency: 3                                    # 3 个并发消费者（对应原 3 分区并行）
+        prefetch: 10
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml

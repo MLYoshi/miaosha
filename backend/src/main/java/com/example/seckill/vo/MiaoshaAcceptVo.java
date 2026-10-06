@@ -5,7 +5,7 @@ package com.example.seckill.vo;
  *
  * <ul>
  *   <li>{@link #PROCESSING}：预扣成功、消息已入队，前端轮询 result 拿单
- *   <li>{@link #SUCCESS}：降级同步落库（Kafka 发送失败 / Redis 不可用直连 DB），
+ *   <li>{@link #SUCCESS}：降级同步落库（RabbitMQ 发送失败 / Redis 不可用直连 DB），
  *       直接携带订单号
  * </ul>
  */
