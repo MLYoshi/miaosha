@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
  * <p>Redis 是第一道库存拦截与防重复下单屏障，数据库仍是最终库存与订单事实来源。
  */
 @Component
-public class RedisMiaoshaStore implements MiaoshaRedisStore {
+public class RedisMiaoshaStore implements MiaoshaStore {
 
   private static final Logger log = LoggerFactory.getLogger(RedisMiaoshaStore.class);
 

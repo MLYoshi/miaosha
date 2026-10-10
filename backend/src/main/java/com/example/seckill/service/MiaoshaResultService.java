@@ -1,6 +1,6 @@
 package com.example.seckill.service;
 
-import com.example.seckill.cache.MiaoshaRedisStore;
+import com.example.seckill.cache.MiaoshaStore;
 import com.example.seckill.dao.MiaoshaOrderMapper;
 import com.example.seckill.domain.MiaoshaOrder;
 import com.example.seckill.vo.MiaoshaResultVo;
@@ -20,10 +20,10 @@ public class MiaoshaResultService {
   private static final String FAILED = "FAILED";
   private static final String SUCCESS_PREFIX = "SUCCESS:";
 
-  private final MiaoshaRedisStore store;
+  private final MiaoshaStore store;
   private final MiaoshaOrderMapper miaoshaOrderMapper;
 
-  public MiaoshaResultService(MiaoshaRedisStore store, MiaoshaOrderMapper miaoshaOrderMapper) {
+  public MiaoshaResultService(MiaoshaStore store, MiaoshaOrderMapper miaoshaOrderMapper) {
     this.store = store;
     this.miaoshaOrderMapper = miaoshaOrderMapper;
   }

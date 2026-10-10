@@ -1,15 +1,34 @@
 package com.example.seckill.service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import com.example.seckill.message.SeckillOrderMessage;
+import com.example.seckill.domain.OrderInfo;
+import com.example.seckill.cache.RedisMiaoshaStore;
 
-/**
- * 消费者落库编排（原 {@code @Service}）。
- *
- * <p>原本负责把一条下单请求消息变成数据库订单并回写 Redis 结果，含幂等快跳、
- * 落库、markSuccess、业务失败补偿等编排语义。
- *
- * <p>消息队列已从 Kafka 迁移至 RabbitMQ，原落库编排逻辑整体移除；
- * 保留类名与结构作为迁移痕迹，类体留空占位。
- */
+
+@Service
 public class OrderFulfillmentService {
+  private static final Logger log = LoggerFactory.getLogger(OrderFulfillmentService.class);
 
-  // 原消费者落库编排逻辑已移除（迁移 RabbitMQ），此处留空占位。
+  private final MiaoshaService miaoshaService;
+  private final RedisMiaoshaStore store;
+
+  public OrderFulfillmentService(MiaoshaService miaoshaService, RedisMiaoshaStore store) {
+    this.miaoshaService = miaoshaService;
+    this.store = store;
+  }
+
+  public void fulfillOrder(SeckillOrderMessage msg) {
+    long userId = msg.userId();
+    long goodsId = msg.goodsId();
+    try {
+      OrderInfo order = miaoshaService.createOrder(userId, goodsId);
+      store.markSuccess(goodsId, userId, order.getId());
+    } catch (Exception e) {
+      store.compensate(goodsId, userId, msg.requestId());
+      log.error("下单落库失败，已补偿: userId={}, goodsId={}, requestId={}", userId, goodsId, msg.requestId(), e);
+      throw e;
+    }
+  }
 }

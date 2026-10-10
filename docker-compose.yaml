@@ -1,9 +1,6 @@
-# 数据库：schema 与种子数据见 backend/docs/db-design.md（旧 miaosha.sql 业务模型的人工维护版）
-# 新克隆项目若 mysql_data 为空，直接执行自包含种子脚本（含建表 + 种子数据 + 时间窗修正）：
-#   docker exec -i seckill-mysql mysql -uroot -proot --default-character-set=utf8mb4 < backend/sql/fix-seed-time-window.sql
-# 详细说明见 backend/sql/README.md
+
 services:
-  # 1. MySQL：用于最终订单落地和数据持久化
+  # 1. MySQL：订单落地存储
   mysql:
     image: mysql:8.0
     container_name: seckill-mysql
@@ -18,7 +15,7 @@ services:
       retries: 5
       start_period: 30s
 
-  # 2. Redis：用于库存预扣减、分布式锁、热点数据缓存（秒杀核心）
+  # 2. Redis：库存预扣减与缓存
   redis:
     image: redis:7.0
     container_name: seckill-redis
@@ -32,7 +29,7 @@ services:
       retries: 5
       start_period: 10s
 
-  # 3. RabbitMQ：用于秒杀请求排队、异步下单削峰（含管理台，宿主机 localhost:15672）
+  # 3. RabbitMQ：异步下单削峰（管理台 localhost:15672）
   rabbitmq:
     image: rabbitmq:3-management
     container_name: seckill-rabbitmq
@@ -46,14 +43,14 @@ services:
       retries: 10
       start_period: 30s
 
-  # 4. 后端：Spring Boot 秒杀服务，容器内通过服务名连接中间件
+  # 4. 后端：Spring Boot，经服务名连中间件
   backend:
     build: ./backend
     container_name: seckill-backend
     ports:
       - "8080:8080"
     environment:
-      TZ: Asia/Shanghai # JVM 默认时区必须与 SQL 种子/准备脚本的 +08:00 时间窗一致，否则 checkInWindow 误判「秒杀未开始」
+      TZ: Asia/Shanghai # 与种子脚本 +08:00 时间窗对齐
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
       REDIS_HOST: redis
@@ -68,7 +65,7 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # 5. 前端：Vite 构建产物由 Nginx 托管，/api 反代到 backend 服务
+  # 5. 前端：Nginx 托管 Vite 产物，/api 反代 backend
   frontend:
     build:
       context: ./frontend

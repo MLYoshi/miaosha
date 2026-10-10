@@ -27,11 +27,10 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: guest
     password: guest
-    publisher-confirm-type: correlated                     # 可靠发送：发布确认（对应原 acks=all）
+    publisher-confirm-type: simple                     # 可靠发送：发布确认（对应原 acks=all）
     publisher-returns: true
     listener:
       simple:
-        acknowledge-mode: manual                          # 消费者显式 basicAck
         concurrency: 3                                    # 3 个并发消费者（对应原 3 分区并行）
         prefetch: 10
 

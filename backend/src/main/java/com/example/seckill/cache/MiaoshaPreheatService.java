@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * 秒杀库存预热：从数据库读取 stock_count，经 {@link MiaoshaRedisStore#setStock} 写入 Redis。
+ * 秒杀库存预热：从数据库读取 stock_count，经 {@link MiaoshaStore#setStock} 写入 Redis。
  *
  * <p>TTL = 活动结束后 30 分钟，最小 1 小时；endDate 为空时取默认 1 天。
  */
@@ -28,11 +28,11 @@ public class MiaoshaPreheatService {
 
   private static final long DEFAULT_TTL_SECONDS = 86400L;
 
-  private final MiaoshaRedisStore store;
+  private final MiaoshaStore store;
   private final GoodsService goodsService;
   private final Clock clock;
 
-  public MiaoshaPreheatService(MiaoshaRedisStore store, GoodsService goodsService, Clock clock) {
+  public MiaoshaPreheatService(MiaoshaStore store, GoodsService goodsService, Clock clock) {
     this.store = store;
     this.goodsService = goodsService;
     this.clock = clock;

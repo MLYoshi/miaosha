@@ -16,7 +16,7 @@ import java.time.Duration;
  *       回写失败不能破坏已完成的数据库事实</li>
  * </ul>
  */
-public interface MiaoshaRedisStore {
+public interface MiaoshaStore {
 
   /** 预扣尝试的三种结局，语义与 scripts/miaosha_try.lua 一致。 */
   enum TryResult {

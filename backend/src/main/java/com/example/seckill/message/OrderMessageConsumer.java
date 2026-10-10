@@ -1,15 +1,22 @@
 package com.example.seckill.message;
 
-/**
- * 下单请求消息消费者（原 {@code @KafkaListener}）。
- *
- * <p>原本订阅 {@code seckill-order} topic、手动 ack，落库编排调用
- * {@code OrderFulfillmentService}。
- *
- * <p>消息队列已从 Kafka 迁移至 RabbitMQ，原消费逻辑整体移除；
- * 保留类名与结构作为迁移痕迹，类体留空占位。
- */
-public class OrderMessageConsumer {
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.stereotype.Component;
 
-  // 原 Kafka 消费逻辑已移除（迁移 RabbitMQ），此处留空占位。
+import com.example.seckill.service.OrderFulfillmentService;
+
+@Component 
+public class OrderMessageConsumer {
+    
+    private final OrderFulfillmentService fulfillmentService;
+
+    public OrderMessageConsumer(OrderFulfillmentService fulfillmentService) {
+        this.fulfillmentService = fulfillmentService;
+      }
+
+    @RabbitListener(queues = RabbitConfig.ORDER_QUEUE)
+    public void consume(SeckillOrderMessage msg){
+        fulfillmentService.fulfillOrder(msg);
+    }
+
 }
